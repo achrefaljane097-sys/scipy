@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watermarking DCT + QIM</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>🔐 Tatouage d'image (Watermarking)</h1>
+        <p>DCT par blocs 8x8 + modulation QIM</p>
+
+        <!-- SECTION UPLOAD AMÉLIORÉE -->
+        <div class="upload-section">
+            <div class="file-upload">
+                <label for="imageInput" class="custom-file-upload">
+                    📁 Choisir un fichier
+                </label>
+                <input type="file" id="imageInput" accept="image/jpeg,image/png">
+                <span id="fileName" class="file-name">Aucun fichier sélectionné</span>
+                <button id="uploadBtn">📤 Uploader et tatouer</button>
+            </div>
+        </div>
+
+        <!-- CHARGEMENT -->
+        <div id="loading" class="loading" style="display: none;">
+            <div class="spinner"></div>
+            <p>⏳ Traitement en cours...</p>
+        </div>
+
+        <!-- AFFICHAGE DES IMAGES -->
+        <div class="images-container" id="imagesContainer" style="display: none;">
+            <div class="image-card">
+                <h3>🖼️ Image originale</h3>
+                <img id="originalImg" alt="Originale">
+            </div>
+            <div class="image-card">
+                <h3>🔏 Image tatouée</h3>
+                <img id="tatoueeImg" alt="Tatouée">
+                <div class="metrics" id="metrics"></div>
+            </div>
+            <div class="image-card" id="attackCard" style="display: none;">
+                <h3>⚡ Image attaquée</h3>
+                <img id="attaqueeImg" alt="Attaquée">
+                <div class="metrics" id="attackMetrics"></div>
+            </div>
+        </div>
+
+        <!-- SECTION ATTAQUES -->
+        <div class="attack-section" id="attackSection" style="display: none;">
+            <h3>🎯 Appliquer une attaque</h3>
+            
+            <div class="attack-buttons">
+                <button onclick="selectAttack('bruit')">🌫️ Bruit gaussien</button>
+                <button onclick="selectAttack('jpeg')">📸 Compression JPEG</button>
+                <button onclick="selectAttack('crop')">✂️ Recadrage</button>
+                <button onclick="selectAttack('rotation')">🔄 Rotation</button>
+            </div>
+
+            <div id="paramPanel" style="display: none; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.1); border-radius: 10px;">
+                <label id="paramLabel" style="font-weight: bold;"></label><br>
+                <input type="range" id="paramSlider" min="0" max="100" step="1" style="width: 300px; margin: 10px 0;">
+                <span id="paramValue" style="margin-left: 10px;"></span><br>
+                <button id="applyParamBtn" style="background: linear-gradient(90deg, #00ff88, #00aaff);">🚀 Appliquer l'attaque</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentAttackType = null;
+
+        // Afficher le nom du fichier sélectionné
+        document.getElementById('imageInput').addEventListener('change', function(e) {
+            const fileName = e.target.files[0] ? e.target.files[0].name : 'Aucun fichier sélectionné';
+            document.getElementById('fileName').textContent = fileName;
+        });
+
+        function selectAttack(type) {
+            currentAttackType = type;
+            const panel = document.getElementById('paramPanel');
+            const slider = document.getElementById('paramSlider');
+            const label = document.getElementById('paramLabel');
+            const valueSpan = document.getElementById('paramValue');
+
+            if (type === 'bruit') {
+                label.innerHTML = '🎛️ Intensité du bruit (sigma) :';
+                slider.min = 0;
+                slider.max = 50;
+                slider.value = 10;
+                valueSpan.innerHTML = slider.value;
+                slider.oninput = function() { valueSpan.innerHTML = this.value; };
+            } 
+            else if (type === 'jpeg') {
+                label.innerHTML = '🎛️ Qualité JPEG (1=faible, 100=élevée) :';
+                slider.min = 1;
+                slider.max = 100;
+                slider.value = 70;
+                valueSpan.innerHTML = slider.value;
+                slider.oninput = function() { valueSpan.innerHTML = this.value; };
+            }
+            else if (type === 'crop') {
+                label.innerHTML = '🎛️ Pourcentage de conservation (%) :';
+                slider.min = 50;
+                slider.max = 100;
+                slider.value = 90;
+                valueSpan.innerHTML = slider.value;
+                slider.oninput = function() { valueSpan.innerHTML = this.value; };
+            }
+            else if (type === 'rotation') {
+                label.innerHTML = '🎛️ Angle de rotation (degrés) :';
+                slider.min = 0;
+                slider.max = 30;
+                slider.value = 5;
+                valueSpan.innerHTML = slider.value;
+                slider.oninput = function() { valueSpan.innerHTML = this.value; };
+            }
+
+            panel.style.display = 'block';
+        }
+
+        document.getElementById('uploadBtn').addEventListener('click', async () => {
+            const fileInput = document.getElementById('imageInput');
+            const file = fileInput.files[0];
+            
+            if (!file) {
+                alert('Veuillez sélectionner une image');
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append('image', file);
+            
+            showLoading(true);
+            
+            try {
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('originalImg').src = data.original;
+                    document.getElementById('tatoueeImg').src = data.tatouee;
+                    document.getElementById('metrics').innerHTML = `
+                        <strong>📊 Métriques :</strong><br>
+                        PSNR: ${data.psnr.toFixed(2)} dB<br>
+                        BER: ${data.ber.toFixed(4)}<br>
+                        Taille watermark: ${data.taille_wm} bits
+                    `;
+                    document.getElementById('imagesContainer').style.display = 'flex';
+                    document.getElementById('attackSection').style.display = 'block';
+                    document.getElementById('attackCard').style.display = 'none';
+                    document.getElementById('paramPanel').style.display = 'none';
+                } else {
+                    alert('Erreur: ' + data.error);
+                }
+            } catch (error) {
+                alert('Erreur de connexion: ' + error);
+            }
+            
+            showLoading(false);
+        });
+
+        document.getElementById('applyParamBtn').addEventListener('click', async () => {
+            if (!currentAttackType) {
+                alert('Sélectionnez d\'abord une attaque');
+                return;
+            }
+
+            showLoading(true);
+            document.getElementById('attackCard').style.display = 'block';
+            
+            const slider = document.getElementById('paramSlider');
+            let value = parseFloat(slider.value);
+            let params = { type: currentAttackType };
+
+            if (currentAttackType === 'bruit') {
+                params.sigma = value;
+            } else if (currentAttackType === 'jpeg') {
+                params.qualite = value;
+            } else if (currentAttackType === 'crop') {
+                params.pourcentage = value / 100;
+            } else if (currentAttackType === 'rotation') {
+                params.angle = value;
+            }
+            
+            try {
+                const response = await fetch('/attack', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(params)
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('attaqueeImg').src = data.image;
+                    let attaqueTexte = '';
+                    if (data.type === 'Bruit (σ=?)') attaqueTexte = `🌫️ Bruit gaussien (σ=${params.sigma || 10})`;
+                    else if (data.type === 'JPEG (Q=?)') attaqueTexte = `📸 Compression JPEG (qualité=${params.qualite || 70})`;
+                    else if (data.type === 'Crop (?%)') attaqueTexte = `✂️ Recadrage (${(params.pourcentage || 0.9)*100}%)`;
+                    else if (data.type === 'Rotation (?°)') attaqueTexte = `🔄 Rotation (${params.angle || 5}°)`;
+                    else attaqueTexte = data.type;
+                    
+                    document.getElementById('attackMetrics').innerHTML = `
+                        <strong>🎯 Attaque : ${attaqueTexte}</strong><br>
+                        BER après attaque: ${data.ber.toFixed(4)}<br>
+                        ${data.ber === 0 ? '✅ Watermark parfaitement préservé !' : (data.ber < 0.1 ? '👍 Très robuste' : (data.ber < 0.3 ? '⚠️ Moyennement robuste' : '❌ Fragile'))}
+                    `;
+                } else {
+                    alert('Erreur: ' + data.error);
+                }
+            } catch (error) {
+                alert('Erreur: ' + error);
+            }
+            
+            showLoading(false);
+        });
+
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'flex' : 'none';
+        }
+    </script>
+</body>
+</html>

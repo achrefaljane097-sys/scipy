@@ -50,9 +50,13 @@ class WatermarkingDCT:
         # Vérification des dimensions
         h, w = self.image.shape
         if h % block_size != 0 or w % block_size != 0:
-            print(f"⚠️ Redimensionnement de {h}x{w} à {h-(h%block_size)}x{w-(w%block_size)}")
-            self.image = self.image[:h-(h%block_size), :w-(w%block_size)]
-        
+            new_h = h - (h % block_size)
+            new_w = w - (w % block_size)
+            print(f"⚠️ Redimensionnement de {h}x{w} à {new_h}x{new_w}")
+            self.image = self.image[:new_h, :new_w]
+
+        self.image_originale = self.image.copy()  # ← AJOUTER CETTE LIGNE
+
         self.block_size = block_size
         self.delta = delta
         self.seed = seed
@@ -247,6 +251,15 @@ class WatermarkingDCT:
         new_h, new_w = int(h * pourcentage), int(w * pourcentage)
         return image[:new_h, :new_w]
     
+    @staticmethod
+    def attaque_crop(image, pourcentage=0.9):
+        """Recadrage de l'image"""
+        h, w = image.shape
+        new_h, new_w = int(h * pourcentage), int(w * pourcentage)
+    # Recadrer
+        image_crop = image[:new_h, :new_w]
+    # Re-dimensionner à la taille originale
+        return cv2.resize(image_crop, (w, h))
     @staticmethod
     def attaque_rotation(image, angle=5):
         """Rotation légère"""
