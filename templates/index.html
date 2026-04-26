@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Watermarking DCT + QIM</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+    <div class="bg-grid"></div>
+
+    <div class="container">
+        <!-- EN-TÊTE -->
+        <header class="header">
+            <div class="header-badge">DCT · QIM · Blocs 8×8</div>
+            <h1>🔐 Watermarking d'image</h1>
+            <p class="subtitle">Tatouage numérique robuste par transformée en cosinus discrète</p>
+        </header>
+
+        <!-- UPLOAD ZONE -->
+        <section class="upload-section">
+            <div class="drop-zone" id="dropZone">
+                <div class="drop-icon">📁</div>
+                <p class="drop-text">Glissez une image ici</p>
+                <p class="drop-sub">ou</p>
+                <label for="imageInput" class="btn-choose">Choisir un fichier</label>
+                <input type="file" id="imageInput" accept="image/jpeg,image/png,image/bmp">
+                <span id="fileName" class="file-name-badge" style="display:none"></span>
+            </div>
+            <button id="uploadBtn" class="btn-primary" disabled>
+                <span class="btn-icon">📤</span> Tatouer l'image
+            </button>
+        </section>
+
+        <!-- CHARGEMENT -->
+        <div id="loading" class="loading" style="display:none">
+            <div class="spinner"></div>
+            <p>Traitement en cours…</p>
+        </div>
+
+        <!-- RÉSULTATS -->
+        <section id="results" style="display:none">
+
+            <!-- MÉTRIQUES GLOBALES -->
+            <div class="metrics-bar" id="metricsBar">
+                <div class="metric-item">
+                    <span class="metric-label">PSNR</span>
+                    <span class="metric-value" id="mPsnr">—</span>
+                    <span class="metric-unit">dB</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">SSIM</span>
+                    <span class="metric-value" id="mSsim">—</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">BER</span>
+                    <span class="metric-value" id="mBer">—</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Accuracy</span>
+                    <span class="metric-value" id="mAcc">—</span>
+                </div>
+                <div class="metric-item">
+                    <span class="metric-label">Watermark</span>
+                    <span class="metric-value" id="mTaille">—</span>
+                    <span class="metric-unit">bits</span>
+                </div>
+            </div>
+
+            <!-- IMAGES -->
+            <div class="images-grid" id="imagesGrid">
+                <div class="image-card">
+                    <div class="card-header">
+                        <span class="card-icon">🖼️</span>
+                        <h3>Image originale</h3>
+                    </div>
+                    <div class="img-wrapper">
+                        <img id="originalImg" alt="Originale">
+                    </div>
+                </div>
+
+                <div class="image-card">
+                    <div class="card-header">
+                        <span class="card-icon">🔏</span>
+                        <h3>Image tatouée</h3>
+                    </div>
+                    <div class="img-wrapper">
+                        <img id="tatoueeImg" alt="Tatouée">
+                    </div>
+                    <div class="card-footer" id="tatoueeFooter"></div>
+                </div>
+
+                <div class="image-card" id="attackCard" style="display:none">
+                    <div class="card-header">
+                        <span class="card-icon">⚡</span>
+                        <h3>Image attaquée</h3>
+                    </div>
+                    <div class="img-wrapper">
+                        <img id="attaqueeImg" alt="Attaquée">
+                    </div>
+                    <div class="card-footer" id="attackFooter"></div>
+                </div>
+            </div>
+
+            <!-- SECTION ATTAQUES -->
+            <section class="attack-section">
+                <h3>🎯 Tester une attaque</h3>
+                <p class="attack-desc">Simulez une altération de l'image et mesurez la robustesse du watermark</p>
+
+                <div class="attack-grid">
+                    <button class="attack-btn" onclick="selectAttack('bruit')" data-type="bruit">
+                        <span class="attack-icon">🌫️</span>
+                        <span>Bruit gaussien</span>
+                    </button>
+                    <button class="attack-btn" onclick="selectAttack('jpeg')" data-type="jpeg">
+                        <span class="attack-icon">📸</span>
+                        <span>Compression JPEG</span>
+                    </button>
+                    <button class="attack-btn" onclick="selectAttack('crop')" data-type="crop">
+                        <span class="attack-icon">✂️</span>
+                        <span>Recadrage</span>
+                    </button>
+                    <button class="attack-btn" onclick="selectAttack('rotation')" data-type="rotation">
+                        <span class="attack-icon">🔄</span>
+                        <span>Rotation</span>
+                    </button>
+                    <button class="attack-btn" onclick="selectAttack('flou')" data-type="flou">
+                        <span class="attack-icon">💧</span>
+                        <span>Flou gaussien</span>
+                    </button>
+                </div>
+
+                <!-- PANNEAU PARAMÈTRE -->
+                <div id="paramPanel" class="param-panel" style="display:none">
+                    <label class="param-label" id="paramLabel"></label>
+                    <div class="slider-row">
+                        <input type="range" id="paramSlider" class="slider">
+                        <span class="slider-value" id="paramValue"></span>
+                        <span class="slider-unit" id="paramUnit"></span>
+                    </div>
+                    <button id="applyBtn" class="btn-attack">
+                        <span>🚀</span> Appliquer l'attaque
+                    </button>
+                </div>
+            </section>
+
+        </section>
+        <!-- /results -->
+
+    </div><!-- /container -->
+
+    <script>
+        let currentAttackType = null;
+
+        // ─── Drag & Drop ───────────────────────────────────
+        const dropZone = document.getElementById('dropZone');
+        const imageInput = document.getElementById('imageInput');
+        const uploadBtn = document.getElementById('uploadBtn');
+
+        ['dragenter', 'dragover'].forEach(e => {
+            dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.add('drag-over'); });
+        });
+        ['dragleave', 'drop'].forEach(e => {
+            dropZone.addEventListener(e, ev => { ev.preventDefault(); dropZone.classList.remove('drag-over'); });
+        });
+        dropZone.addEventListener('drop', ev => {
+            const file = ev.dataTransfer.files[0];
+            if (file) setFile(file);
+        });
+
+        imageInput.addEventListener('change', e => {
+            if (e.target.files[0]) setFile(e.target.files[0]);
+        });
+
+        function setFile(file) {
+            const badge = document.getElementById('fileName');
+            badge.textContent = file.name;
+            badge.style.display = 'inline-block';
+            uploadBtn.disabled = false;
+            imageInput._file = file;
+        }
+
+        // ─── Upload ────────────────────────────────────────
+        uploadBtn.addEventListener('click', async () => {
+            const file = imageInput._file || imageInput.files[0];
+            if (!file) { alert('Sélectionnez une image'); return; }
+
+            const fd = new FormData();
+            fd.append('image', file);
+
+            showLoading(true);
+
+            try {
+                const res = await fetch('/upload', { method: 'POST', body: fd });
+                const data = await res.json();
+
+                if (!res.ok) { alert('Erreur : ' + data.error); return; }
+
+                document.getElementById('originalImg').src = data.original;
+                document.getElementById('tatoueeImg').src = data.tatouee;
+
+                // Métriques bar
+                document.getElementById('mPsnr').textContent = data.psnr.toFixed(2);
+                document.getElementById('mSsim').textContent = data.ssim.toFixed(4);
+                document.getElementById('mBer').textContent = data.ber.toFixed(4);
+                document.getElementById('mAcc').textContent = (data.accuracy * 100).toFixed(1) + '%';
+                document.getElementById('mTaille').textContent = data.taille_wm.toLocaleString();
+
+                document.getElementById('tatoueeFooter').innerHTML =
+                    `<span class="badge badge-ok">✅ Tatouage réussi</span>`;
+
+                document.getElementById('results').style.display = 'block';
+                document.getElementById('attackCard').style.display = 'none';
+                document.getElementById('paramPanel').style.display = 'none';
+
+                // Réinitialiser sélection d'attaque
+                document.querySelectorAll('.attack-btn').forEach(b => b.classList.remove('active'));
+                currentAttackType = null;
+
+            } catch (err) {
+                alert('Erreur réseau : ' + err);
+            } finally {
+                showLoading(false);
+            }
+        });
+
+        // ─── Sélection d'attaque ───────────────────────────
+        function selectAttack(type) {
+            currentAttackType = type;
+
+            document.querySelectorAll('.attack-btn').forEach(b => b.classList.remove('active'));
+            document.querySelector(`[data-type="${type}"]`).classList.add('active');
+
+            const panel   = document.getElementById('paramPanel');
+            const slider  = document.getElementById('paramSlider');
+            const label   = document.getElementById('paramLabel');
+            const valSpan = document.getElementById('paramValue');
+            const unit    = document.getElementById('paramUnit');
+
+            const configs = {
+                bruit:    { label: 'Intensité du bruit (σ)',          min: 0,  max: 50,  val: 10,  unit: '', step: 1 },
+                jpeg:     { label: 'Qualité JPEG',                     min: 1,  max: 100, val: 70,  unit: '%', step: 1 },
+                crop:     { label: 'Conservation de l\'image',         min: 50, max: 100, val: 90,  unit: '%', step: 1 },
+                rotation: { label: 'Angle de rotation',                min: 0,  max: 30,  val: 5,   unit: '°', step: 1 },
+                flou:     { label: 'Taille du noyau (flou gaussien)',  min: 1,  max: 25,  val: 5,   unit: 'px', step: 2 },
+            };
+
+            const cfg = configs[type];
+            label.textContent = cfg.label;
+            slider.min = cfg.min;
+            slider.max = cfg.max;
+            slider.step = cfg.step;
+            slider.value = cfg.val;
+            valSpan.textContent = cfg.val;
+            unit.textContent = cfg.unit;
+
+            slider.oninput = function() { valSpan.textContent = this.value; };
+            panel.style.display = 'block';
+        }
+
+        // ─── Appliquer l'attaque ───────────────────────────
+        document.getElementById('applyBtn').addEventListener('click', async () => {
+            if (!currentAttackType) return;
+
+            showLoading(true);
+            document.getElementById('attackCard').style.display = 'flex';
+
+            const val = parseFloat(document.getElementById('paramSlider').value);
+            const params = { type: currentAttackType };
+
+            if (currentAttackType === 'bruit')    params.sigma      = val;
+            else if (currentAttackType === 'jpeg') params.qualite    = val;
+            else if (currentAttackType === 'crop') params.pourcentage = val / 100;
+            else if (currentAttackType === 'rotation') params.angle  = val;
+            else if (currentAttackType === 'flou') params.ksize      = Math.round(val) % 2 === 0 ? Math.round(val)+1 : Math.round(val);
+
+            try {
+                const res = await fetch('/attack', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(params)
+                });
+                const data = await res.json();
+
+                if (!res.ok) { alert('Erreur : ' + data.error); return; }
+
+                document.getElementById('attaqueeImg').src = data.image;
+
+                // Badge de robustesse
+                let badge = '';
+                if (data.ber === 0)        badge = '<span class="badge badge-ok">✅ Parfaitement préservé</span>';
+                else if (data.ber < 0.05)  badge = '<span class="badge badge-good">👍 Très robuste</span>';
+                else if (data.ber < 0.15)  badge = '<span class="badge badge-warn">⚠️ Moyennement robuste</span>';
+                else                       badge = '<span class="badge badge-fail">❌ Fragile</span>';
+
+                document.getElementById('attackFooter').innerHTML = `
+                    <strong>${data.type}</strong><br>
+                    PSNR : ${data.psnr.toFixed(2)} dB &nbsp;|&nbsp;
+                    SSIM : ${data.ssim.toFixed(4)} &nbsp;|&nbsp;
+                    BER : ${data.ber.toFixed(4)}<br>
+                    Accuracy : ${(data.accuracy * 100).toFixed(1)}%<br>
+                    ${badge}
+                `;
+
+            } catch (err) {
+                alert('Erreur réseau : ' + err);
+            } finally {
+                showLoading(false);
+            }
+        });
+
+        // ─── Utilitaires ───────────────────────────────────
+        function showLoading(show) {
+            document.getElementById('loading').style.display = show ? 'flex' : 'none';
+        }
+    </script>
+</body>
+</html>
