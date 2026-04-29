@@ -1,50 +1,14 @@
-name: CI/CD Pipeline
-
-on:
-  push:
-    branches: [ main ]
-
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v3
-
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v2
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_PASSWORD }}
-
-      - name: Build Docker image
-        run: |
-          docker build -t achrefaljane097/my.app:${{ github.sha }} .
-          docker tag achrefaljane097/my.app:${{ github.sha }} achrefaljane097/my.app:latest
-
-      - name: Push Docker image
-        run: |
-          docker push achrefaljane097/my.app:${{ github.sha }}
-          docker push achrefaljane097/my.app:latest
-
   deploy:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Log in to Azure
+      - name: Login to Azure
         uses: azure/login@v1
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Deploy to Azure Container Instance
-        uses: azure/cli@v1
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v2
         with:
-          azcliversion: latest
-          inlineScript: |
-            az container create \
-              --resource-group myResourceGroup2 \
-              --name achref-watermark \
-              --image achrefaljane097/my.app:latest \
-              --ports 5000 \
-              --ip-address public \
-              --location eastus2
+          app-name: 'scipy-wm-ami'
+          images: ${{ secrets.DOCKER_USERNAME }}/my.app:latest
