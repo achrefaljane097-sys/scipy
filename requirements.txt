@@ -1,0 +1,6 @@
+﻿flask
+opencv-python
+numpy
+scipy==1.10.1
+scikit-image
+matplotlib
