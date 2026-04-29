@@ -1,228 +1,690 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Watermarking DCT + QIM</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WatermarkLab — DCT + QIM</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;800&family=JetBrains+Mono:wght@400;600&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-    <div class="container">
-        <h1>🔐 Tatouage d'image (Watermarking)</h1>
-        <p>DCT par blocs 8x8 + modulation QIM</p>
 
-        <!-- SECTION UPLOAD AMÉLIORÉE -->
-        <div class="upload-section">
-            <div class="file-upload">
-                <label for="imageInput" class="custom-file-upload">
-                    📁 Choisir un fichier
-                </label>
-                <input type="file" id="imageInput" accept="image/jpeg,image/png">
-                <span id="fileName" class="file-name">Aucun fichier sélectionné</span>
-                <button id="uploadBtn">📤 Uploader et tatouer</button>
-            </div>
+<div class="noise"></div>
+
+<nav class="topnav">
+  <div class="nav-brand">🔐 WatermarkLab</div>
+  <div class="nav-tabs">
+    <button class="tab active" onclick="switchTab('lab')">🧪 Lab</button>
+    <button class="tab" onclick="switchTab('compare')">⚖️ Comparer</button>
+    <button class="tab" onclick="switchTab('analyse')">📊 Analyse Delta</button>
+    <button class="tab" onclick="switchTab('history')">📋 Historique</button>
+  </div>
+  <button class="btn-reset" onclick="resetAll()">↺ Reset</button>
+</nav>
+
+<!-- ══════════════════════════ TAB LAB ══════════════════════════ -->
+<div id="tab-lab" class="page active">
+
+  <div class="hero">
+    <div class="hero-label">DCT · QIM · Blocs 8×8</div>
+    <h1>Tatouage Numérique</h1>
+    <p>Watermarking robuste par transformée en cosinus discrète</p>
+  </div>
+
+  <!-- UPLOAD + PARAMÈTRES -->
+  <div class="card upload-card">
+    <div class="card-title">📁 Charger une image <span class="slot-badge slot-a">Slot A</span></div>
+
+    <div class="params-row">
+      <div class="param-group">
+        <label>Delta (QIM)</label>
+        <div class="slider-inline">
+          <input type="range" id="deltaSlider" min="5" max="80" value="30" oninput="document.getElementById('deltaVal').textContent=this.value">
+          <span id="deltaVal" class="mono">30</span>
         </div>
-
-        <!-- CHARGEMENT -->
-        <div id="loading" class="loading" style="display: none;">
-            <div class="spinner"></div>
-            <p>⏳ Traitement en cours...</p>
-        </div>
-
-        <!-- AFFICHAGE DES IMAGES -->
-        <div class="images-container" id="imagesContainer" style="display: none;">
-            <div class="image-card">
-                <h3>🖼️ Image originale</h3>
-                <img id="originalImg" alt="Originale">
-            </div>
-            <div class="image-card">
-                <h3>🔏 Image tatouée</h3>
-                <img id="tatoueeImg" alt="Tatouée">
-                <div class="metrics" id="metrics"></div>
-            </div>
-            <div class="image-card" id="attackCard" style="display: none;">
-                <h3>⚡ Image attaquée</h3>
-                <img id="attaqueeImg" alt="Attaquée">
-                <div class="metrics" id="attackMetrics"></div>
-            </div>
-        </div>
-
-        <!-- SECTION ATTAQUES -->
-        <div class="attack-section" id="attackSection" style="display: none;">
-            <h3>🎯 Appliquer une attaque</h3>
-            
-            <div class="attack-buttons">
-                <button onclick="selectAttack('bruit')">🌫️ Bruit gaussien</button>
-                <button onclick="selectAttack('jpeg')">📸 Compression JPEG</button>
-                <button onclick="selectAttack('crop')">✂️ Recadrage</button>
-                <button onclick="selectAttack('rotation')">🔄 Rotation</button>
-            </div>
-
-            <div id="paramPanel" style="display: none; margin-top: 20px; padding: 15px; background: rgba(255,255,255,0.1); border-radius: 10px;">
-                <label id="paramLabel" style="font-weight: bold;"></label><br>
-                <input type="range" id="paramSlider" min="0" max="100" step="1" style="width: 300px; margin: 10px 0;">
-                <span id="paramValue" style="margin-left: 10px;"></span><br>
-                <button id="applyParamBtn" style="background: linear-gradient(90deg, #00ff88, #00aaff);">🚀 Appliquer l'attaque</button>
-            </div>
-        </div>
+      </div>
+      <div class="param-group">
+        <label>Seed</label>
+        <input type="number" id="seedInput" value="42" min="0" max="9999" class="input-num">
+      </div>
     </div>
 
-    <script>
-        let currentAttackType = null;
+    <div class="drop-zone" id="dropA">
+      <div class="drop-icon">📷</div>
+      <p>Glissez une image ici</p>
+      <label for="fileA" class="btn-sm">Choisir</label>
+      <input type="file" id="fileA" accept="image/*" hidden>
+      <span id="nameA" class="fname" style="display:none"></span>
+    </div>
+    <button id="uploadBtnA" class="btn-primary" disabled onclick="doUpload('A')">
+      ▶ Insérer le Watermark
+    </button>
+  </div>
 
-        // Afficher le nom du fichier sélectionné
-        document.getElementById('imageInput').addEventListener('change', function(e) {
-            const fileName = e.target.files[0] ? e.target.files[0].name : 'Aucun fichier sélectionné';
-            document.getElementById('fileName').textContent = fileName;
-        });
+  <!-- LOADING -->
+  <div id="loading" class="loading" style="display:none">
+    <div class="loader-ring"></div>
+    <p>Traitement en cours…</p>
+  </div>
 
-        function selectAttack(type) {
-            currentAttackType = type;
-            const panel = document.getElementById('paramPanel');
-            const slider = document.getElementById('paramSlider');
-            const label = document.getElementById('paramLabel');
-            const valueSpan = document.getElementById('paramValue');
+  <!-- RÉSULTATS -->
+  <div id="resultsA" style="display:none">
 
-            if (type === 'bruit') {
-                label.innerHTML = '🎛️ Intensité du bruit (sigma) :';
-                slider.min = 0;
-                slider.max = 50;
-                slider.value = 10;
-                valueSpan.innerHTML = slider.value;
-                slider.oninput = function() { valueSpan.innerHTML = this.value; };
-            } 
-            else if (type === 'jpeg') {
-                label.innerHTML = '🎛️ Qualité JPEG (1=faible, 100=élevée) :';
-                slider.min = 1;
-                slider.max = 100;
-                slider.value = 70;
-                valueSpan.innerHTML = slider.value;
-                slider.oninput = function() { valueSpan.innerHTML = this.value; };
-            }
-            else if (type === 'crop') {
-                label.innerHTML = '🎛️ Pourcentage de conservation (%) :';
-                slider.min = 50;
-                slider.max = 100;
-                slider.value = 90;
-                valueSpan.innerHTML = slider.value;
-                slider.oninput = function() { valueSpan.innerHTML = this.value; };
-            }
-            else if (type === 'rotation') {
-                label.innerHTML = '🎛️ Angle de rotation (degrés) :';
-                slider.min = 0;
-                slider.max = 30;
-                slider.value = 5;
-                valueSpan.innerHTML = slider.value;
-                slider.oninput = function() { valueSpan.innerHTML = this.value; };
-            }
+    <!-- MÉTRIQUES -->
+    <div class="metrics-grid" id="metricsA">
+      <div class="metric-card">
+        <div class="metric-icon">📡</div>
+        <div class="metric-val" id="mPsnr">—</div>
+        <div class="metric-lbl">PSNR (dB)</div>
+        <div class="metric-bar"><div class="metric-fill psnr-fill" id="psnrBar"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon">🔬</div>
+        <div class="metric-val" id="mSsim">—</div>
+        <div class="metric-lbl">SSIM</div>
+        <div class="metric-bar"><div class="metric-fill ssim-fill" id="ssimBar"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon">⚡</div>
+        <div class="metric-val" id="mBer">—</div>
+        <div class="metric-lbl">BER</div>
+        <div class="metric-bar"><div class="metric-fill ber-fill" id="berBar"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon">🎯</div>
+        <div class="metric-val" id="mAcc">—</div>
+        <div class="metric-lbl">Accuracy</div>
+        <div class="metric-bar"><div class="metric-fill acc-fill" id="accBar"></div></div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon">🧩</div>
+        <div class="metric-val" id="mWm">—</div>
+        <div class="metric-lbl">Bits watermark</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-icon">📐</div>
+        <div class="metric-val" id="mDim">—</div>
+        <div class="metric-lbl">Dimensions</div>
+      </div>
+    </div>
 
-            panel.style.display = 'block';
-        }
+    <!-- IMAGES -->
+    <div class="images-row">
+      <div class="img-card">
+        <div class="img-header">🖼️ Originale</div>
+        <img id="imgOrigA" alt="">
+        <div class="img-footer" id="footerOrigA"></div>
+      </div>
+      <div class="img-card">
+        <div class="img-header">🔏 Tatouée</div>
+        <img id="imgTatA" alt="">
+        <div class="img-footer">
+          <a href="/download/A" class="btn-dl">⬇ Télécharger</a>
+        </div>
+      </div>
+      <div class="img-card" id="cardAttA" style="display:none">
+        <div class="img-header">⚡ Attaquée</div>
+        <img id="imgAttA" alt="">
+        <div class="img-footer">
+          <span id="attLabelA" class="badge-info"></span><br>
+          <a href="/download_attacked/A" class="btn-dl">⬇ Télécharger</a>
+        </div>
+      </div>
+    </div>
 
-        document.getElementById('uploadBtn').addEventListener('click', async () => {
-            const fileInput = document.getElementById('imageInput');
-            const file = fileInput.files[0];
-            
-            if (!file) {
-                alert('Veuillez sélectionner une image');
-                return;
-            }
-            
-            const formData = new FormData();
-            formData.append('image', file);
-            
-            showLoading(true);
-            
-            try {
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    document.getElementById('originalImg').src = data.original;
-                    document.getElementById('tatoueeImg').src = data.tatouee;
-                    document.getElementById('metrics').innerHTML = `
-                        <strong>📊 Métriques :</strong><br>
-                        PSNR: ${data.psnr.toFixed(2)} dB<br>
-                        BER: ${data.ber.toFixed(4)}<br>
-                        Taille watermark: ${data.taille_wm} bits
-                    `;
-                    document.getElementById('imagesContainer').style.display = 'flex';
-                    document.getElementById('attackSection').style.display = 'block';
-                    document.getElementById('attackCard').style.display = 'none';
-                    document.getElementById('paramPanel').style.display = 'none';
-                } else {
-                    alert('Erreur: ' + data.error);
-                }
-            } catch (error) {
-                alert('Erreur de connexion: ' + error);
-            }
-            
-            showLoading(false);
-        });
+    <!-- GRAPHIQUE RADAR -->
+    <div class="card chart-card">
+      <div class="card-title">📊 Profil de robustesse — Radar</div>
+      <div class="radar-wrap">
+        <canvas id="radarChart"></canvas>
+      </div>
+    </div>
 
-        document.getElementById('applyParamBtn').addEventListener('click', async () => {
-            if (!currentAttackType) {
-                alert('Sélectionnez d\'abord une attaque');
-                return;
-            }
+    <!-- ATTAQUES -->
+    <div class="card attack-card">
+      <div class="card-title">⚡ Simuler une attaque</div>
+      <div class="attack-pills">
+        <button class="pill" data-attack="bruit" onclick="selectAttack('bruit','A')">🌫️ Bruit</button>
+        <button class="pill" data-attack="jpeg" onclick="selectAttack('jpeg','A')">📸 JPEG</button>
+        <button class="pill" data-attack="crop" onclick="selectAttack('crop','A')">✂️ Recadrage</button>
+        <button class="pill" data-attack="rotation" onclick="selectAttack('rotation','A')">🔄 Rotation</button>
+        <button class="pill" data-attack="flou" onclick="selectAttack('flou','A')">💧 Flou</button>
+        <button class="pill" data-attack="contraste" onclick="selectAttack('contraste','A')">☀️ Contraste</button>
+        <button class="pill" data-attack="median" onclick="selectAttack('median','A')">🔲 Médian</button>
+        <button class="pill" data-attack="sel_poivre" onclick="selectAttack('sel_poivre','A')">🧂 Sel & Poivre</button>
+      </div>
+      <div id="paramPanelA" class="param-panel" style="display:none">
+        <label id="paramLabelA" class="mono-sm"></label>
+        <div class="slider-row">
+          <input type="range" id="paramSliderA" class="slider">
+          <span id="paramValA" class="mono">—</span>
+          <span id="paramUnitA" class="unit-lbl"></span>
+        </div>
+        <button class="btn-attack" onclick="doAttack('A')">🚀 Lancer</button>
+      </div>
 
-            showLoading(true);
-            document.getElementById('attackCard').style.display = 'block';
-            
-            const slider = document.getElementById('paramSlider');
-            let value = parseFloat(slider.value);
-            let params = { type: currentAttackType };
+      <!-- RÉSULTATS ATTAQUE -->
+      <div id="attackResultA" class="attack-result" style="display:none">
+        <div class="result-row">
+          <div class="result-item"><span class="rl">PSNR</span><span class="rv" id="aPsnrA">—</span></div>
+          <div class="result-item"><span class="rl">SSIM</span><span class="rv" id="aSsimA">—</span></div>
+          <div class="result-item"><span class="rl">BER</span><span class="rv" id="aBerA">—</span></div>
+          <div class="result-item"><span class="rl">Accuracy</span><span class="rv" id="aAccA">—</span></div>
+          <div class="result-item"><span class="rl">MSE</span><span class="rv" id="aMseA">—</span></div>
+        </div>
+        <div id="robustBadgeA" class="robust-badge"></div>
+      </div>
+    </div>
 
-            if (currentAttackType === 'bruit') {
-                params.sigma = value;
-            } else if (currentAttackType === 'jpeg') {
-                params.qualite = value;
-            } else if (currentAttackType === 'crop') {
-                params.pourcentage = value / 100;
-            } else if (currentAttackType === 'rotation') {
-                params.angle = value;
-            }
-            
-            try {
-                const response = await fetch('/attack', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(params)
-                });
-                
-                const data = await response.json();
-                
-                if (response.ok) {
-                    document.getElementById('attaqueeImg').src = data.image;
-                    let attaqueTexte = '';
-                    if (data.type === 'Bruit (σ=?)') attaqueTexte = `🌫️ Bruit gaussien (σ=${params.sigma || 10})`;
-                    else if (data.type === 'JPEG (Q=?)') attaqueTexte = `📸 Compression JPEG (qualité=${params.qualite || 70})`;
-                    else if (data.type === 'Crop (?%)') attaqueTexte = `✂️ Recadrage (${(params.pourcentage || 0.9)*100}%)`;
-                    else if (data.type === 'Rotation (?°)') attaqueTexte = `🔄 Rotation (${params.angle || 5}°)`;
-                    else attaqueTexte = data.type;
-                    
-                    document.getElementById('attackMetrics').innerHTML = `
-                        <strong>🎯 Attaque : ${attaqueTexte}</strong><br>
-                        BER après attaque: ${data.ber.toFixed(4)}<br>
-                        ${data.ber === 0 ? '✅ Watermark parfaitement préservé !' : (data.ber < 0.1 ? '👍 Très robuste' : (data.ber < 0.3 ? '⚠️ Moyennement robuste' : '❌ Fragile'))}
-                    `;
-                } else {
-                    alert('Erreur: ' + data.error);
-                }
-            } catch (error) {
-                alert('Erreur: ' + error);
-            }
-            
-            showLoading(false);
-        });
+    <!-- GRAPHIQUE BARRES COMPARAISON ATTAQUES -->
+    <div class="card chart-card">
+      <div class="card-title">📈 Évolution des métriques par attaque</div>
+      <canvas id="barChart" height="120"></canvas>
+    </div>
 
-        function showLoading(show) {
-            document.getElementById('loading').style.display = show ? 'flex' : 'none';
-        }
-    </script>
+  </div>
+</div>
+
+<!-- ══════════════════════════ TAB COMPARE ══════════════════════════ -->
+<div id="tab-compare" class="page">
+  <div class="hero">
+    <h1>⚖️ Comparer deux images</h1>
+    <p>Chargez deux images et comparez leurs métriques côte à côte</p>
+  </div>
+
+  <div class="compare-grid">
+    <!-- Slot A -->
+    <div class="card">
+      <div class="card-title">Image A <span class="slot-badge slot-a">Slot A</span></div>
+      <div class="drop-zone" id="dropB_A">
+        <div class="drop-icon">📷</div>
+        <label for="fileCmpA" class="btn-sm">Choisir</label>
+        <input type="file" id="fileCmpA" accept="image/*" hidden>
+        <span id="nameCmpA" class="fname" style="display:none"></span>
+      </div>
+      <div class="params-row">
+        <div class="param-group">
+          <label>Delta</label>
+          <div class="slider-inline">
+            <input type="range" id="deltaCmpA" min="5" max="80" value="30" oninput="document.getElementById('dCmpAVal').textContent=this.value">
+            <span id="dCmpAVal" class="mono">30</span>
+          </div>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="doUploadCmp('A')" id="btnCmpA" disabled>▶ Charger A</button>
+      <img id="imgCmpA" style="display:none;width:100%;border-radius:10px;margin-top:12px" alt="">
+    </div>
+
+    <!-- Slot B -->
+    <div class="card">
+      <div class="card-title">Image B <span class="slot-badge slot-b">Slot B</span></div>
+      <div class="drop-zone" id="dropB_B">
+        <div class="drop-icon">📷</div>
+        <label for="fileCmpB" class="btn-sm">Choisir</label>
+        <input type="file" id="fileCmpB" accept="image/*" hidden>
+        <span id="nameCmpB" class="fname" style="display:none"></span>
+      </div>
+      <div class="params-row">
+        <div class="param-group">
+          <label>Delta</label>
+          <div class="slider-inline">
+            <input type="range" id="deltaCmpB" min="5" max="80" value="50" oninput="document.getElementById('dCmpBVal').textContent=this.value">
+            <span id="dCmpBVal" class="mono">50</span>
+          </div>
+        </div>
+      </div>
+      <button class="btn-primary" onclick="doUploadCmp('B')" id="btnCmpB" disabled>▶ Charger B</button>
+      <img id="imgCmpB" style="display:none;width:100%;border-radius:10px;margin-top:12px" alt="">
+    </div>
+  </div>
+
+  <div style="text-align:center;margin:20px 0">
+    <button class="btn-primary" onclick="doCompare()" id="btnCompare">⚖️ Comparer maintenant</button>
+  </div>
+
+  <div id="compareResult" style="display:none">
+    <div class="card chart-card">
+      <div class="card-title">📊 Comparaison A vs B</div>
+      <canvas id="compareChart" height="100"></canvas>
+    </div>
+    <div class="compare-table-wrap">
+      <table class="compare-table">
+        <thead><tr><th>Métrique</th><th>Image A</th><th>Image B</th><th>Meilleur</th></tr></thead>
+        <tbody id="compareTbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ TAB ANALYSE ══════════════════════════ -->
+<div id="tab-analyse" class="page">
+  <div class="hero">
+    <h1>📊 Analyse du paramètre Delta</h1>
+    <p>Scannez l'impact de delta sur la qualité et la robustesse</p>
+  </div>
+
+  <div class="card" style="max-width:600px;margin:0 auto 32px">
+    <div class="card-title">Configuration</div>
+    <p style="color:var(--muted);font-size:0.9rem;margin-bottom:16px">
+      Assurez-vous d'avoir chargé une image dans le Lab (Slot A) avant de lancer l'analyse.
+    </p>
+    <button class="btn-primary" onclick="doScanDelta()">🔬 Lancer le scan Delta</button>
+  </div>
+
+  <div id="deltaResult" style="display:none">
+    <div class="card chart-card">
+      <div class="card-title">PSNR & BER en fonction de Delta</div>
+      <canvas id="deltaChart" height="120"></canvas>
+    </div>
+    <div class="card chart-card">
+      <div class="card-title">Accuracy en fonction de Delta</div>
+      <canvas id="accChart" height="100"></canvas>
+    </div>
+    <div class="compare-table-wrap">
+      <table class="compare-table">
+        <thead><tr><th>Delta</th><th>PSNR (dB)</th><th>SSIM</th><th>BER</th><th>Accuracy</th></tr></thead>
+        <tbody id="deltaTbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════ TAB HISTORY ══════════════════════════ -->
+<div id="tab-history" class="page">
+  <div class="hero">
+    <h1>📋 Historique des tests</h1>
+    <p>Tous les tests effectués dans cette session</p>
+  </div>
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div class="card-title" style="margin:0">Résultats</div>
+      <button class="btn-sm" onclick="loadHistory()">🔄 Actualiser</button>
+    </div>
+    <div class="compare-table-wrap">
+      <table class="compare-table">
+        <thead>
+          <tr><th>#</th><th>Heure</th><th>Slot</th><th>Fichier</th><th>Delta</th><th>Attaque</th><th>PSNR</th><th>SSIM</th><th>BER</th><th>Accuracy</th></tr>
+        </thead>
+        <tbody id="historyTbody">
+          <tr><td colspan="10" style="text-align:center;color:var(--muted)">Aucun test encore</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── STATE ─────────────────────────────────────────────────────────
+let currentAttack = { A: null, B: null };
+let radarChart = null, barChart = null, compareChart = null, deltaChart = null, accChart = null;
+let attackHistory = { labels: [], psnr: [], ber: [], accuracy: [] };
+
+// ── TABS ──────────────────────────────────────────────────────────
+function switchTab(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  event.target.classList.add('active');
+  if (name === 'history') loadHistory();
+}
+
+// ── FILE INPUT ────────────────────────────────────────────────────
+function wireFile(inputId, nameId, btnId, dropId) {
+  const inp = document.getElementById(inputId);
+  const drop = document.getElementById(dropId);
+  inp.addEventListener('change', e => { if (e.target.files[0]) setFile(e.target.files[0], nameId, btnId, inp); });
+  ['dragenter','dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('drag-over'); }));
+  ['dragleave','drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('drag-over'); }));
+  drop.addEventListener('drop', e => { if (e.dataTransfer.files[0]) setFile(e.dataTransfer.files[0], nameId, btnId, inp); });
+}
+function setFile(file, nameId, btnId, inp) {
+  inp._file = file;
+  const n = document.getElementById(nameId);
+  n.textContent = file.name; n.style.display = 'inline';
+  document.getElementById(btnId).disabled = false;
+}
+wireFile('fileA', 'nameA', 'uploadBtnA', 'dropA');
+wireFile('fileCmpA', 'nameCmpA', 'btnCmpA', 'dropB_A');
+wireFile('fileCmpB', 'nameCmpB', 'btnCmpB', 'dropB_B');
+
+// ── UPLOAD ────────────────────────────────────────────────────────
+async function doUpload(slot) {
+  const file = document.getElementById('fileA')._file || document.getElementById('fileA').files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('image', file);
+  fd.append('slot', slot);
+  fd.append('delta', document.getElementById('deltaSlider').value);
+  fd.append('seed', document.getElementById('seedInput').value);
+  showLoading(true);
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: fd });
+    const d = await res.json();
+    if (!res.ok) { alert(d.error); return; }
+    fillMetrics(d);
+    document.getElementById('imgOrigA').src = d.original;
+    document.getElementById('imgTatA').src = d.tatouee;
+    document.getElementById('footerOrigA').textContent = d.dimensions;
+    document.getElementById('resultsA').style.display = 'block';
+    document.getElementById('cardAttA').style.display = 'none';
+    document.getElementById('attackResultA').style.display = 'none';
+    attackHistory = { labels: ['Sans attaque'], psnr: [d.psnr], ber: [d.ber], accuracy: [d.accuracy] };
+    buildRadar(d);
+    buildBarChart();
+  } catch(e) { alert('Erreur: '+e); }
+  finally { showLoading(false); }
+}
+
+async function doUploadCmp(slot) {
+  const fileId = slot === 'A' ? 'fileCmpA' : 'fileCmpB';
+  const file = document.getElementById(fileId)._file || document.getElementById(fileId).files[0];
+  if (!file) return;
+  const fd = new FormData();
+  fd.append('image', file);
+  fd.append('slot', slot);
+  fd.append('delta', document.getElementById('deltaCmp'+slot).value);
+  fd.append('seed', '42');
+  showLoading(true);
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: fd });
+    const d = await res.json();
+    if (!res.ok) { alert(d.error); return; }
+    document.getElementById('imgCmp'+slot).src = d.tatouee;
+    document.getElementById('imgCmp'+slot).style.display = 'block';
+  } catch(e) { alert('Erreur: '+e); }
+  finally { showLoading(false); }
+}
+
+// ── ATTACK ────────────────────────────────────────────────────────
+const attackConfigs = {
+  bruit:     { label: 'Intensité (σ)', min: 0, max: 50, val: 10, step: 1, unit: '', key: 'sigma' },
+  jpeg:      { label: 'Qualité JPEG',  min: 1, max: 100, val: 70, step: 1, unit: '%', key: 'qualite' },
+  crop:      { label: 'Conservation',  min: 50, max: 99, val: 90, step: 1, unit: '%', key: '_pct' },
+  rotation:  { label: 'Angle',         min: 0, max: 30, val: 5, step: 1, unit: '°', key: 'angle' },
+  flou:      { label: 'Taille noyau',  min: 1, max: 25, val: 5, step: 2, unit: 'px', key: 'ksize' },
+  contraste: { label: 'Facteur α',     min: 50, max: 300, val: 150, step: 10, unit: '', key: '_alpha' },
+  median:    { label: 'Taille noyau',  min: 1, max: 15, val: 3, step: 2, unit: 'px', key: 'ksize' },
+  sel_poivre:{ label: 'Probabilité',   min: 1, max: 30, val: 5, step: 1, unit: '%', key: '_prob' },
+};
+
+function selectAttack(type, slot) {
+  currentAttack[slot] = type;
+  document.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+  document.querySelector(`[data-attack="${type}"]`).classList.add('active');
+  const cfg = attackConfigs[type];
+  const panel = document.getElementById('paramPanel'+slot);
+  document.getElementById('paramLabel'+slot).textContent = cfg.label;
+  const sl = document.getElementById('paramSlider'+slot);
+  sl.min = cfg.min; sl.max = cfg.max; sl.step = cfg.step; sl.value = cfg.val;
+  document.getElementById('paramVal'+slot).textContent = cfg.val;
+  document.getElementById('paramUnit'+slot).textContent = cfg.unit;
+  sl.oninput = function() { document.getElementById('paramVal'+slot).textContent = this.value; };
+  panel.style.display = 'block';
+}
+
+async function doAttack(slot) {
+  const type = currentAttack[slot];
+  if (!type) return;
+  const cfg = attackConfigs[type];
+  const val = parseFloat(document.getElementById('paramSlider'+slot).value);
+  const params = { type, slot };
+
+  if (cfg.key === '_pct')   params.pourcentage = val / 100;
+  else if (cfg.key === '_alpha') params.alpha = val / 100;
+  else if (cfg.key === '_prob')  params.prob = val / 100;
+  else params[cfg.key] = val;
+
+  showLoading(true);
+  try {
+    const res = await fetch('/attack', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(params) });
+    const d = await res.json();
+    if (!res.ok) { alert(d.error); return; }
+
+    document.getElementById('imgAttA').src = d.image;
+    document.getElementById('cardAttA').style.display = 'flex';
+    document.getElementById('attLabelA').textContent = d.type;
+
+    document.getElementById('aPsnrA').textContent = d.psnr.toFixed(2)+' dB';
+    document.getElementById('aSsimA').textContent = d.ssim.toFixed(4);
+    document.getElementById('aBerA').textContent = d.ber.toFixed(4);
+    document.getElementById('aAccA').textContent = d.accuracy.toFixed(1)+'%';
+    document.getElementById('aMseA').textContent = d.mse.toFixed(2);
+    document.getElementById('attackResultA').style.display = 'block';
+
+    const badge = document.getElementById('robustBadgeA');
+    if (d.ber === 0) badge.innerHTML = '<span class="robust ok">✅ Parfaitement préservé</span>';
+    else if (d.ber < 0.05) badge.innerHTML = '<span class="robust good">👍 Très robuste</span>';
+    else if (d.ber < 0.15) badge.innerHTML = '<span class="robust warn">⚠️ Moyennement robuste</span>';
+    else badge.innerHTML = '<span class="robust fail">❌ Fragile</span>';
+
+    // Mettre à jour graphiques
+    attackHistory.labels.push(d.type.split('(')[0].trim());
+    attackHistory.psnr.push(d.psnr);
+    attackHistory.ber.push(d.ber * 100);
+    attackHistory.accuracy.push(d.accuracy);
+    buildBarChart();
+  } catch(e) { alert('Erreur: '+e); }
+  finally { showLoading(false); }
+}
+
+// ── COMPARE ───────────────────────────────────────────────────────
+async function doCompare() {
+  showLoading(true);
+  try {
+    const res = await fetch('/compare', { method: 'POST' });
+    const d = await res.json();
+    if (!res.ok) { alert(d.error); return; }
+
+    document.getElementById('compareResult').style.display = 'block';
+    const metrics = [
+      { name: 'PSNR (dB)', a: d.A.psnr, b: d.B.psnr, higher: true },
+      { name: 'SSIM',      a: d.A.ssim, b: d.B.ssim, higher: true },
+      { name: 'BER',       a: d.A.ber,  b: d.B.ber,  higher: false },
+      { name: 'Accuracy %',a: d.A.accuracy, b: d.B.accuracy, higher: true },
+      { name: 'Delta',     a: d.A.delta, b: d.B.delta, higher: null },
+    ];
+    const tbody = document.getElementById('compareTbody');
+    tbody.innerHTML = metrics.map(m => {
+      let winner = '—';
+      if (m.higher !== null) {
+        winner = (m.higher ? m.a > m.b : m.a < m.b) ? '🏆 A' : '🏆 B';
+      }
+      return `<tr><td>${m.name}</td><td class="val-a">${m.a}</td><td class="val-b">${m.b}</td><td>${winner}</td></tr>`;
+    }).join('');
+
+    buildCompareChart(d);
+  } catch(e) { alert('Erreur: '+e); }
+  finally { showLoading(false); }
+}
+
+// ── SCAN DELTA ────────────────────────────────────────────────────
+async function doScanDelta() {
+  showLoading(true);
+  try {
+    const res = await fetch('/scan_delta', { method: 'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({slot:'A'}) });
+    const d = await res.json();
+    if (!res.ok) { alert(d.error); return; }
+
+    document.getElementById('deltaResult').style.display = 'block';
+    const deltas = d.results.map(r => r.delta);
+    const psnrs  = d.results.map(r => r.psnr);
+    const bers   = d.results.map(r => r.ber * 100);
+    const accs   = d.results.map(r => r.accuracy);
+
+    buildDeltaChart(deltas, psnrs, bers);
+    buildAccChart(deltas, accs);
+
+    const tbody = document.getElementById('deltaTbody');
+    tbody.innerHTML = d.results.map(r => `
+      <tr>
+        <td>${r.delta}</td>
+        <td>${r.psnr}</td>
+        <td>${r.ssim}</td>
+        <td>${r.ber}</td>
+        <td>${r.accuracy}%</td>
+      </tr>`).join('');
+  } catch(e) { alert('Erreur: '+e); }
+  finally { showLoading(false); }
+}
+
+// ── HISTORY ───────────────────────────────────────────────────────
+async function loadHistory() {
+  const res = await fetch('/history');
+  const d = await res.json();
+  const tbody = document.getElementById('historyTbody');
+  if (!d.history.length) {
+    tbody.innerHTML = '<tr><td colspan="10" style="text-align:center;color:var(--muted)">Aucun test</td></tr>';
+    return;
+  }
+  tbody.innerHTML = d.history.map(h => `
+    <tr>
+      <td>${h.id}</td><td>${h.timestamp}</td>
+      <td><span class="slot-badge slot-${h.slot.toLowerCase()}">${h.slot}</span></td>
+      <td>${h.filename}</td><td>${h.delta}</td><td>${h.attaque}</td>
+      <td>${h.psnr}</td><td>${h.ssim}</td><td>${h.ber}</td><td>${h.accuracy}%</td>
+    </tr>`).join('');
+}
+
+// ── CHARTS ────────────────────────────────────────────────────────
+const chartDefaults = {
+  color: '#e0e0e0',
+  plugins: { legend: { labels: { color: '#8b949e', font: { family: 'JetBrains Mono', size: 11 } } } },
+  scales: {
+    x: { ticks: { color: '#8b949e', font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+    y: { ticks: { color: '#8b949e', font: { family: 'JetBrains Mono', size: 10 } }, grid: { color: 'rgba(255,255,255,0.05)' } }
+  }
+};
+
+function buildRadar(d) {
+  const psnr_norm = Math.min(d.psnr / 50 * 100, 100);
+  const ssim_norm = d.ssim * 100;
+  const ber_norm  = (1 - d.ber) * 100;
+  const acc_norm  = d.accuracy;
+
+  if (radarChart) radarChart.destroy();
+  radarChart = new Chart(document.getElementById('radarChart'), {
+    type: 'radar',
+    data: {
+      labels: ['PSNR', 'SSIM', 'Robustesse (1-BER)', 'Accuracy', 'Qualité'],
+      datasets: [{
+        label: 'Métriques',
+        data: [psnr_norm, ssim_norm, ber_norm, acc_norm, (psnr_norm+ssim_norm)/2],
+        backgroundColor: 'rgba(0,229,160,0.15)',
+        borderColor: '#00e5a0',
+        pointBackgroundColor: '#00aaff',
+        pointRadius: 5,
+        borderWidth: 2,
+      }]
+    },
+    options: {
+      plugins: { legend: { labels: { color: '#8b949e', font: { family: 'JetBrains Mono', size: 11 } } } },
+      scales: { r: { ticks: { color: '#8b949e', backdropColor: 'transparent' }, grid: { color: 'rgba(255,255,255,0.08)' }, angleLines: { color: 'rgba(255,255,255,0.08)' }, pointLabels: { color: '#e0e0e0', font: { family: 'Syne', size: 12 } } } }
+    }
+  });
+}
+
+function buildBarChart() {
+  if (barChart) barChart.destroy();
+  barChart = new Chart(document.getElementById('barChart'), {
+    type: 'bar',
+    data: {
+      labels: attackHistory.labels,
+      datasets: [
+        { label: 'PSNR (dB)', data: attackHistory.psnr, backgroundColor: 'rgba(0,229,160,0.7)', borderColor: '#00e5a0', borderWidth: 1, yAxisID: 'y' },
+        { label: 'BER (%)', data: attackHistory.ber, backgroundColor: 'rgba(240,80,80,0.7)', borderColor: '#f05050', borderWidth: 1, yAxisID: 'y2' },
+        { label: 'Accuracy (%)', data: attackHistory.accuracy, backgroundColor: 'rgba(0,170,255,0.7)', borderColor: '#00aaff', borderWidth: 1, yAxisID: 'y2' },
+      ]
+    },
+    options: {
+      ...chartDefaults,
+      scales: {
+        x: chartDefaults.scales.x,
+        y: { ...chartDefaults.scales.y, position: 'left', title: { display: true, text: 'PSNR (dB)', color: '#00e5a0' } },
+        y2: { ...chartDefaults.scales.y, position: 'right', title: { display: true, text: '% (BER / Accuracy)', color: '#00aaff' }, grid: { drawOnChartArea: false } }
+      }
+    }
+  });
+}
+
+function buildCompareChart(d) {
+  if (compareChart) compareChart.destroy();
+  compareChart = new Chart(document.getElementById('compareChart'), {
+    type: 'bar',
+    data: {
+      labels: ['PSNR (dB)', 'SSIM', 'BER', 'Accuracy (%)'],
+      datasets: [
+        { label: 'Image A', data: [d.A.psnr, d.A.ssim * 50, d.A.ber * 100, d.A.accuracy], backgroundColor: 'rgba(0,229,160,0.7)' },
+        { label: 'Image B', data: [d.B.psnr, d.B.ssim * 50, d.B.ber * 100, d.B.accuracy], backgroundColor: 'rgba(0,170,255,0.7)' },
+      ]
+    },
+    options: chartDefaults
+  });
+}
+
+function buildDeltaChart(deltas, psnrs, bers) {
+  if (deltaChart) deltaChart.destroy();
+  deltaChart = new Chart(document.getElementById('deltaChart'), {
+    type: 'line',
+    data: {
+      labels: deltas,
+      datasets: [
+        { label: 'PSNR (dB)', data: psnrs, borderColor: '#00e5a0', backgroundColor: 'rgba(0,229,160,0.1)', tension: 0.4, yAxisID: 'y' },
+        { label: 'BER (%)', data: bers, borderColor: '#f05050', backgroundColor: 'rgba(240,80,80,0.1)', tension: 0.4, yAxisID: 'y2' },
+      ]
+    },
+    options: {
+      ...chartDefaults,
+      scales: {
+        x: { ...chartDefaults.scales.x, title: { display: true, text: 'Delta', color: '#8b949e' } },
+        y: { ...chartDefaults.scales.y, position: 'left', title: { display: true, text: 'PSNR (dB)', color: '#00e5a0' } },
+        y2: { ...chartDefaults.scales.y, position: 'right', title: { display: true, text: 'BER (%)', color: '#f05050' }, grid: { drawOnChartArea: false } }
+      }
+    }
+  });
+}
+
+function buildAccChart(deltas, accs) {
+  if (accChart) accChart.destroy();
+  accChart = new Chart(document.getElementById('accChart'), {
+    type: 'line',
+    data: {
+      labels: deltas,
+      datasets: [{ label: 'Accuracy (%)', data: accs, borderColor: '#00aaff', backgroundColor: 'rgba(0,170,255,0.1)', tension: 0.4, fill: true }]
+    },
+    options: {
+      ...chartDefaults,
+      scales: {
+        x: { ...chartDefaults.scales.x, title: { display: true, text: 'Delta', color: '#8b949e' } },
+        y: { ...chartDefaults.scales.y, min: 0, max: 100 }
+      }
+    }
+  });
+}
+
+// ── MÉTRIQUES ─────────────────────────────────────────────────────
+function fillMetrics(d) {
+  document.getElementById('mPsnr').textContent = d.psnr.toFixed(2);
+  document.getElementById('mSsim').textContent = d.ssim.toFixed(4);
+  document.getElementById('mBer').textContent  = d.ber.toFixed(4);
+  document.getElementById('mAcc').textContent  = d.accuracy.toFixed(1) + '%';
+  document.getElementById('mWm').textContent   = d.taille_wm.toLocaleString();
+  document.getElementById('mDim').textContent  = d.dimensions;
+  document.getElementById('psnrBar').style.width = Math.min(d.psnr / 50 * 100, 100) + '%';
+  document.getElementById('ssimBar').style.width = d.ssim * 100 + '%';
+  document.getElementById('berBar').style.width  = Math.max(0, (1 - d.ber)) * 100 + '%';
+  document.getElementById('accBar').style.width  = d.accuracy + '%';
+}
+
+// ── UTILS ─────────────────────────────────────────────────────────
+function showLoading(show) {
+  document.getElementById('loading').style.display = show ? 'flex' : 'none';
+}
+
+async function resetAll() {
+  await fetch('/reset', { method: 'POST' });
+  location.reload();
+}
+</script>
 </body>
 </html>
